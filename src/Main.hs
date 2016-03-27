@@ -62,9 +62,9 @@ trainNet = do
   (labelCount, labels) <- readMNISTLabels "train-labels-idx1-ubyte"
 
   let image = head imageData
-  let input = vector (map fromIntegral image)
+  let input = imageToInput image
   let correctNumber = fromIntegral . head $ labels
-  let training = vector $ map (\i -> if i == correctNumber then 1.0 else 0.0) [1..10]
+  let training = toOutput correctNumber
 
   hiddenLayer <- genLayer 20 (width * height)
   outputLayer <- genLayer 10 20
@@ -74,7 +74,7 @@ trainNet = do
   let loop net i err =
         case i > 1000 || err < 0.1 of
           True  -> net
-          False -> trace (show $ sumElements (last error)) $ loop nextNet (i+1) (sumElements (last error))
+          False -> trace (show $ sumElements (abs (last error))) $ loop nextNet (i+1) (sumElements (abs (last error)))
             where
               output = evalNetwork net input
               error = evalNetworkError net output input training
@@ -90,9 +90,9 @@ trainNetM = do
   (labelCount, labels) <- readMNISTLabels "train-labels-idx1-ubyte"
 
   let image = head imageData
-  let input = fromRows [vector (map fromIntegral image)]
+  let input = fromRows [imageToInput image]
   let correctNumber = fromIntegral . head $ labels
-  let training = fromRows [vector $ map (\i -> if i == correctNumber then 1.0 else 0.0) [1..10]]
+  let training = fromRows [toOutput correctNumber]
 
   hiddenLayer <- genLayer 20 (width * height)
   outputLayer <- genLayer 10 20
@@ -102,7 +102,7 @@ trainNetM = do
   let loop net i err =
         case i > 100000 || err < 0.1 of
           True  -> net
-          False -> trace (show $ sumElements (last error)) $ loop nextNet (i+1) (sumElements (last error))
+          False -> trace (show $ sumElements (abs (last error))) $ loop nextNet (i+1) (sumElements (abs (last error)))
             where
               output = evalNetworkM net input
               error = evalNetworkErrorM net output input training
@@ -161,10 +161,14 @@ trainNetwork initialNet input trainingValues epochs batchSize learnRate =
             nextNet = foldl runBatch net (zip inputBatches trainingBatches)
             --nextNet = net
             runBatch network (inputBatch, trainingBatch) =
-              gradientDescentM net inputBatch (map fst output) error learnRate
+              gradientDescentM network inputBatch (map fst output) error learnRate
                 where
-                  output = evalNetworkM net inputBatch
-                  error = evalNetworkErrorM net output inputBatch trainingBatch
+                  output = evalNetworkM network inputBatch
+                  error = evalNetworkErrorM network output inputBatch trainingBatch
+
+-- Converts raw MNIST pixels (0-255) to network inputs scaled to 0-1
+imageToInput :: [CUChar] -> Vector R
+imageToInput = vector . map ((/ 255) . fromIntegral)
 
 toOutput = \n -> vector . map (\x -> if n == x then 1.0 else 0.0) $ [0..9]
 
@@ -180,7 +184,7 @@ fromOutput v = guess
 
 runTest :: Network -> ([CUChar], Int) -> Bool
 runTest network (image, label) = guess == label
-  where output = fst . last $ evalNetwork network $ vector . map fromIntegral $ image
+  where output = fst . last $ evalNetwork network $ imageToInput image
         guess = fromOutput output
 
 --runTest :: Network -> ([CUChar], Int) -> IO ()
@@ -207,7 +211,7 @@ main = do
 
   assert (trainingWidth == testWidth && trainingHeight == testHeight) (return ())
 
-  let input = take 60000 . map (vector . map fromIntegral) $ trainingImageData
+  let input = take 60000 . map imageToInput $ trainingImageData
   let trainingData = take 60000 . map toOutput $ trainingLabels
   
   initialNetwork <- genNetwork [20,10] (trainingWidth * trainingHeight)
@@ -215,7 +219,7 @@ main = do
   let trainedNetwork = trainNetwork initialNetwork input trainingData 2 10 3.0
 
   let testImage = head testImageData
-  let testInput = vector . map fromIntegral $ testImage
+  let testInput = imageToInput testImage
   let testOutput = head testLabels --toOutput $ head testLabels
 
   --window testImage testWidth testHeight

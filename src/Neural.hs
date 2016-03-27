@@ -166,6 +166,8 @@ gradientDescentM network input activations error learnRate =
               -- Calculated using the kronecker product, a generalisation of tensor product to matrices
               --weightGradients = kronecker previousActivation (tr' error)
               --weightGradients = (previousActivation <> (tr' error)) -- / (fromIntegral $ cols previousActivation)
-              weightGradients = (tr' error <> previousActivation) / (fromIntegral . cols $ previousActivation)
+              -- Averaged over the batch (one row per input)
+              batchSize = fromIntegral . rows $ error
+              weightGradients = (tr' error <> previousActivation) / batchSize
               -- Sum the bias gradient components for each neuron (the columns)
-              biasGradients = sumColumns error / (fromIntegral . size $ bias)
+              biasGradients = sumColumns error / batchSize
